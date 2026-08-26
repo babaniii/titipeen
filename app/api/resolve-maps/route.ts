@@ -1,49 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 
-function extractCoordinates(url: string) {
+function extractCoordinates(text: string) {
   const patterns = [
-    /*
-     * Google Maps:
-     * @-6.12345,110.12345
-     */
-    /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    // @-6.12345,110.12345
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
 
-    /*
-     * Google Maps:
-     * !3d-6.12345!4d110.12345
-     */
-    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+    // !3d-6.12345!4d110.12345
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
 
-    /*
-     * ?q=-6.12345,110.12345
-     */
-    /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    // ?q=-6.12345,110.12345
+    /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
 
-    /*
-     * ?query=-6.12345,110.12345
-     */
-    /[?&]query=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
-
-    /*
-     * /-6.12345,110.12345
-     */
-    /\/(-?\d+\.\d+),(-?\d+\.\d+)/,
+    // /place/-6.12345,110.12345
+    /\/place\/(-?\d+\.\d+),(-?\d+\.\d+)/,
   ];
 
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
+  for (const regex of patterns) {
+    const match = text.match(regex);
 
-    if (!match) {
-      continue;
-    }
-
-    const lat = Number(match[1]);
-    const lng = Number(match[2]);
-
-    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+    if (match) {
       return {
-        lat,
-        lng,
+        lat: Number(match[1]),
+        lng: Number(match[2]),
       };
     }
   }
@@ -51,95 +29,76 @@ function extractCoordinates(url: string) {
   return null;
 }
 
-async function resolveRedirects(startUrl: string) {
-  let currentUrl = startUrl;
-
-  for (let i = 0; i < 6; i++) {
-    const response = await fetch(currentUrl, {
-      method: "GET",
-      redirect: "manual",
-      headers: {
-        "User-Agent": "Mozilla/5.0 Titipeen",
-      },
-      cache: "no-store",
-    });
-
-    const location = response.headers.get("location");
-
-    if (!location) {
-      return currentUrl;
-    }
-
-    currentUrl = new URL(location, currentUrl).toString();
-  }
-
-  return currentUrl;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const input = String(body.url || "").trim();
+    const url = body.url;
 
-    if (!input) {
+    if (!url || typeof url !== "string") {
       return NextResponse.json(
         {
           success: false,
-          message: "Link Google Maps kosong.",
+          message: "Link Google Maps tidak ditemukan.",
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
 
+    // Hanya izinkan Google Maps
     if (
-      !input.includes("google.com/maps") &&
-      !input.includes("maps.app.goo.gl") &&
-      !input.includes("goo.gl/maps")
+      !url.includes("maps.app.goo.gl") &&
+      !url.includes("google.com/maps") &&
+      !url.includes("maps.google.com")
     ) {
       return NextResponse.json(
         {
           success: false,
-          message: "Link bukan link Google Maps.",
+          message: "Link harus berasal dari Google Maps.",
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
 
     /*
-     * Coba ambil koordinat langsung
+     * Fetch short URL dan ikuti redirect.
      */
-
-    let coordinates = extractCoordinates(input);
-
-    let finalUrl = input;
+    const response = await fetch(url, {
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+      },
+      cache: "no-store",
+    });
 
     /*
-     * Kalau belum ketemu,
-     * resolve redirect.
+     * URL terakhir setelah redirect.
      */
+    const finalUrl = response.url;
 
+    /*
+     * Coba cari koordinat dari URL hasil redirect.
+     */
+    let coordinates = extractCoordinates(finalUrl);
+
+    /*
+     * Kalau belum ketemu, baca HTML.
+     */
     if (!coordinates) {
-      finalUrl = await resolveRedirects(input);
+      const html = await response.text();
 
-      coordinates = extractCoordinates(finalUrl);
+      coordinates = extractCoordinates(html);
     }
 
     if (!coordinates) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Link berhasil dibuka, tetapi koordinat tidak ditemukan. Coba dari Google Maps pilih lokasi/pin lalu Share → Copy link.",
+          message: "Link berhasil dibuka, tetapi koordinat tidak ditemukan.",
           finalUrl,
         },
-        {
-          status: 422,
-        },
+        { status: 422 },
       );
     }
 
@@ -147,19 +106,17 @@ export async function POST(request: NextRequest) {
       success: true,
       latitude: coordinates.lat,
       longitude: coordinates.lng,
-      resolvedUrl: finalUrl,
+      finalUrl,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Google Maps resolver error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: "Gagal memproses link Google Maps.",
+        message: "Gagal membaca link Google Maps.",
       },
-      {
-        status: 500,
-      },
+      { status: 500 },
     );
   }
 }
