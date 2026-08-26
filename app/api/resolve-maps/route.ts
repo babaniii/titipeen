@@ -2,16 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 function extractCoordinates(text: string) {
   const patterns = [
-    // @-6.12345,110.12345
     /@(-?\d+\.\d+),(-?\d+\.\d+)/,
-
-    // !3d-6.12345!4d110.12345
     /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
-
-    // ?q=-6.12345,110.12345
     /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
-
-    // /place/-6.12345,110.12345
     /\/place\/(-?\d+\.\d+),(-?\d+\.\d+)/,
   ];
 
@@ -29,13 +22,29 @@ function extractCoordinates(text: string) {
   return null;
 }
 
+function extractPlaceFromGoogleMapsUrl(url: string) {
+  try {
+    const decoded = decodeURIComponent(url);
+
+    const match = decoded.match(/\/maps\/place\/([^/]+)/);
+
+    if (!match) {
+      return null;
+    }
+
+    return match[1].replace(/\+/g, " ").trim();
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const url = body.url;
+    const inputUrl = body.url;
 
-    if (!url || typeof url !== "string") {
+    if (!inputUrl || typeof inputUrl !== "string") {
       return NextResponse.json(
         {
           success: false,
@@ -45,11 +54,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hanya izinkan Google Maps
     if (
-      !url.includes("maps.app.goo.gl") &&
-      !url.includes("google.com/maps") &&
-      !url.includes("maps.google.com")
+      !inputUrl.includes("maps.app.goo.gl") &&
+      !inputUrl.includes("google.com/maps") &&
+      !inputUrl.includes("maps.google.com")
     ) {
       return NextResponse.json(
         {
@@ -60,10 +68,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /*
-     * Fetch short URL dan ikuti redirect.
-     */
-    const response = await fetch(url, {
+    // Follow Google Maps short-link redirect
+    const response = await fetch(inputUrl, {
       redirect: "follow",
       headers: {
         "User-Agent":
@@ -72,49 +78,104 @@ export async function POST(request: NextRequest) {
       cache: "no-store",
     });
 
-    /*
-     * URL terakhir setelah redirect.
-     */
     const finalUrl = response.url;
 
-    /*
-     * Coba cari koordinat dari URL hasil redirect.
-     */
+    // =====================================================
+    // 1. Coba cari koordinat langsung dari URL
+    // =====================================================
+
     let coordinates = extractCoordinates(finalUrl);
 
-    /*
-     * Kalau belum ketemu, baca HTML.
-     */
-    if (!coordinates) {
-      const html = await response.text();
-
-      coordinates = extractCoordinates(html);
+    if (coordinates) {
+      return NextResponse.json({
+        success: true,
+        latitude: coordinates.lat,
+        longitude: coordinates.lng,
+        finalUrl,
+      });
     }
 
-    if (!coordinates) {
+    // =====================================================
+    // 2. Kalau tidak ada koordinat, ambil nama tempat
+    // =====================================================
+
+    const place = extractPlaceFromGoogleMapsUrl(finalUrl);
+
+    if (!place) {
       return NextResponse.json(
         {
           success: false,
-          message: "Link berhasil dibuka, tetapi koordinat tidak ditemukan.",
+          message:
+            "Link Google Maps berhasil dibuka, tetapi nama lokasi tidak ditemukan.",
           finalUrl,
         },
         { status: 422 },
       );
     }
 
+    // =====================================================
+    // 3. Geocoding menggunakan Nominatim / OpenStreetMap
+    // =====================================================
+
+    const searchUrl =
+      "https://nominatim.openstreetmap.org/search?" +
+      new URLSearchParams({
+        q: place,
+        format: "json",
+        limit: "1",
+        countrycodes: "id",
+      }).toString();
+
+    const geoResponse = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Titipeen/1.0 contact: titipeen",
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!geoResponse.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Layanan pencarian lokasi sedang bermasalah.",
+        },
+        { status: 502 },
+      );
+    }
+
+    const geoData = await geoResponse.json();
+
+    if (!geoData || geoData.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Lokasi berhasil ditemukan di Google Maps, tetapi koordinatnya tidak berhasil diperoleh.",
+          place,
+          finalUrl,
+        },
+        { status: 422 },
+      );
+    }
+
+    const result = geoData[0];
+
     return NextResponse.json({
       success: true,
-      latitude: coordinates.lat,
-      longitude: coordinates.lng,
+      latitude: Number(result.lat),
+      longitude: Number(result.lon),
+      place,
+      displayName: result.display_name,
       finalUrl,
     });
   } catch (error) {
-    console.error("Google Maps resolver error:", error);
+    console.error("Resolve Maps Error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: "Gagal membaca link Google Maps.",
+        message: "Gagal memproses link Google Maps.",
       },
       { status: 500 },
     );
