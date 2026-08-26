@@ -415,13 +415,6 @@ Lokasi: https://www.google.com/maps?q=${pickup.lat},${pickup.lng}`,
 
             <p className="text-sm text-slate-500">Titip apa aja, kami bantu.</p>
           </div>
-
-          <a
-            href="/driver"
-            className="text-sm font-bold text-slate-500 hover:text-blue-600"
-          >
-            Driver
-          </a>
         </div>
       </header>
 
