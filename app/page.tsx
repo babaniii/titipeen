@@ -750,8 +750,8 @@ Lokasi: https://www.google.com/maps?q=${pickup.lat},${pickup.lng}`,
               <br />
               3. Klik dan tahan jalanan depan toko agar muncul pin
               <br />
-              4. Kemudian tulisan bermodelkan angka seperti contoh: 10,09889,
-              100,28378478
+              4. Kemudian cari tulisan bermodelkan angka seperti contoh:
+              10,09889, 100,28378478
               <br />
               5. Klik, selamat anda berhasil menyalin koordinat lokasi toko
               untuk cek ongkir
@@ -871,7 +871,7 @@ Lokasi: https://www.google.com/maps?q=${pickup.lat},${pickup.lng}`,
                   onClick={sendWhatsApp}
                   className="w-full mt-5 bg-green-500 hover:bg-green-600 text-white rounded-2xl py-4 font-black"
                 >
-                  💬 Pesan Sekarang
+                  💬 Hubungi Driver
                 </button>
               </div>
             )}
