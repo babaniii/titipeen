@@ -20,7 +20,7 @@ type Pickup = {
   lng: number;
 };
 
-const TARIFF_PER_100M = 250;
+const TARIFF_PER_100M = 150;
 
 export default function Home() {
   /*
@@ -528,7 +528,7 @@ Lokasi: https://www.google.com/maps?q=${pickup.lat},${pickup.lng}`,
       `*ORDER by TITIPEEN*\n\n` +
       `*ONGKIR:* Rp${fare.toLocaleString("id-ID")}\n` +
       `*TOTAL JARAK:* ${(distance / 1000).toFixed(2)} KM\n` +
-      `*TARIF:* Rp250 / 100 meter\n\n` +
+      `*TARIF:* Rp150 / 100 meter\n\n` +
       `*POSISI DRIVER SAAT ORDER*\n` +
       `https://www.google.com/maps?q=${driverLocation.lat},${driverLocation.lng}\n\n` +
       `${pickupText}\n\n` +
@@ -863,7 +863,7 @@ Lokasi: https://www.google.com/maps?q=${pickup.lat},${pickup.lng}`,
                   {fare.toLocaleString("id-ID")}
                 </p>
 
-                <p className="text-xs text-slate-500 mt-2">Rp250 / 100 meter</p>
+                <p className="text-xs text-slate-500 mt-2">Rp150 / 100 meter</p>
 
                 {/* WHATSAPP */}
 
